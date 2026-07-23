@@ -1,0 +1,88 @@
+ARG BASE_IMAGE=docker.io/voipmonitor/vllm@sha256:41078d5fac36b802e0f3798057a4b383c24296cb8570f6f4fc138c34d8cfa303
+FROM ${BASE_IMAGE}
+
+ARG VLLM_REPO=https://github.com/local-inference-lab/vllm.git
+ARG VLLM_COMMIT=3e731bc043d23ec21277fb76d3e15fe6da91b23b
+ARG SPARKINFER_REPO=https://github.com/local-inference-lab/b12x.git
+ARG SPARKINFER_COMMIT=1a88b389a8d14f26dbe4c157965938cfd8f1bf51
+ARG EXLLAMAV3_REPO=https://github.com/brandonmmusic-max/exllamav3.git
+ARG EXLLAMAV3_COMMIT=704aefd743b390af4bd0fb429d1906f9b964c7d8
+ARG SITE=/opt/venv/lib/python3.12/site-packages
+
+LABEL org.opencontainers.image.title="GLM-5.2 NVFP4/TR3 optimized runtime" \
+      org.opencontainers.image.description="TP4/DCP4 GLM-5.2 hybrid runtime for four RTX PRO 6000 Blackwell GPUs" \
+      org.opencontainers.image.source="https://github.com/JMPSequeira/glm52-tr3" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.vllm.revision="${VLLM_COMMIT}" \
+      org.opencontainers.image.sparkinfer.base-revision="${SPARKINFER_COMMIT}" \
+      org.opencontainers.image.exllamav3.revision="${EXLLAMAV3_COMMIT}"
+
+SHELL ["/bin/bash", "-euxo", "pipefail", "-c"]
+
+# Overlay the pinned vLLM source while retaining model-family modules supplied by
+# the Gilded Gnosis base image. The fail-closed patcher adds only the hybrid
+# checkpoint registration and serialized expert-loader hooks.
+RUN git clone --filter=blob:none --no-checkout "${VLLM_REPO}" /opt/public-build/vllm \
+    && git -C /opt/public-build/vllm fetch --depth=1 origin "${VLLM_COMMIT}" \
+    && git -C /opt/public-build/vllm checkout --detach "${VLLM_COMMIT}" \
+    && cp -a /opt/public-build/vllm/vllm/. "${SITE}/vllm/" \
+    && rm -rf /opt/public-build/vllm
+
+COPY runtime/patch-vllm-hybrid.py /opt/glm52-tr3/patch-vllm-hybrid.py
+COPY runtime/nvfp4_tr3_hybrid.py ${SITE}/vllm/model_executor/layers/quantization/nvfp4_tr3_hybrid.py
+RUN /opt/venv/bin/python /opt/glm52-tr3/patch-vllm-hybrid.py "${SITE}/vllm"
+
+# Apply the reviewed EXL3/Trellis API series and the persistent mixed
+# NVFP4/Trellis kernel to SparkInfer's published v20 base revision.
+COPY patches/sparkinfer-final.patch /opt/glm52-tr3/sparkinfer-final.patch
+RUN git clone --filter=blob:none --no-checkout "${SPARKINFER_REPO}" /opt/public-build/sparkinfer \
+    && git -C /opt/public-build/sparkinfer fetch --depth=1 origin "${SPARKINFER_COMMIT}" \
+    && git -C /opt/public-build/sparkinfer checkout --detach "${SPARKINFER_COMMIT}" \
+    && git -C /opt/public-build/sparkinfer apply --check /opt/glm52-tr3/sparkinfer-final.patch \
+    && git -C /opt/public-build/sparkinfer apply /opt/glm52-tr3/sparkinfer-final.patch \
+    && /opt/venv/bin/pip install --no-cache-dir \
+         'nvidia-cutlass-dsl[cu13]==4.6.0' 'quack-kernels==0.6.1' \
+    && /opt/venv/bin/pip install --no-cache-dir --no-deps --no-build-isolation \
+         /opt/public-build/sparkinfer \
+    && rm -rf /opt/public-build/sparkinfer
+
+# Keep the repository copy authoritative for the final mixed kernel.
+COPY runtime/trellis_hybrid.py ${SITE}/sparkinfer/moe/_shared/kernels/w4a16/trellis_hybrid.py
+
+# The public base predates the checkpoint-native B12X TR3 wrapper and the
+# BF16/NVFP4 W4A16 helpers used by the retained hybrid backend.
+COPY runtime/b12x/cute/fp4.py ${SITE}/b12x/cute/fp4.py
+COPY runtime/b12x/moe/fused/tr3.py ${SITE}/b12x/moe/fused/tr3.py
+COPY runtime/b12x/moe/fused/w4a16/kernel.py ${SITE}/b12x/moe/fused/w4a16/kernel.py
+
+# Brandon's SM120 retile branch supplies the fused EXL3 MoE extension used by
+# the large-batch TR3 path. Building under /opt/public-build avoids embedding a
+# workstation-specific source path in the extension.
+RUN git clone --filter=blob:none --no-checkout "${EXLLAMAV3_REPO}" /opt/public-build/exllamav3 \
+    && git -C /opt/public-build/exllamav3 fetch --depth=1 origin "${EXLLAMAV3_COMMIT}" \
+    && git -C /opt/public-build/exllamav3 checkout --detach "${EXLLAMAV3_COMMIT}" \
+    && cd /opt/public-build/exllamav3 \
+    && MAX_JOBS=16 TORCH_CUDA_ARCH_LIST=12.0a \
+         /opt/venv/bin/python setup.py build_ext --inplace \
+    && cp exllamav3_ext*.so "${SITE}/" \
+    && rm -rf /opt/public-build/exllamav3
+
+COPY runtime/torch212-compat.cpp /opt/glm52-tr3/torch212-compat.cpp
+RUN g++ -O2 -shared -fPIC /opt/glm52-tr3/torch212-compat.cpp \
+      -o /opt/glm52-tr3/libexl3_torch212_compat.so
+
+COPY runtime/patch-v19-fused-tr3.py /opt/glm52-tr3/patch-v19-fused-tr3.py
+COPY runtime/serve-final.sh /opt/glm52-tr3/serve-final.sh
+COPY config/glm52_nvfp4_mla_outer_scales.json /opt/glm52-tr3/glm52_nvfp4_mla_outer_scales.json
+RUN chmod 0755 /opt/glm52-tr3/serve-final.sh /opt/glm52-tr3/patch-v19-fused-tr3.py \
+    && /opt/venv/bin/python -m py_compile \
+         /opt/glm52-tr3/patch-vllm-hybrid.py \
+         /opt/glm52-tr3/patch-v19-fused-tr3.py \
+         "${SITE}/vllm/model_executor/layers/quantization/nvfp4_tr3_hybrid.py" \
+         "${SITE}/sparkinfer/moe/_shared/kernels/w4a16/trellis_hybrid.py" \
+         "${SITE}/b12x/moe/fused/tr3.py" \
+         "${SITE}/b12x/moe/fused/w4a16/kernel.py" \
+    && /opt/venv/bin/python -c \
+         'from vllm.model_executor.layers.quantization import get_quantization_config; assert get_quantization_config("nvfp4_tr3_hybrid").__name__ == "NvFp4Tr3HybridConfig"'
+
+ENV B12X_TR3_TORCH_ABI_SHIM=/opt/glm52-tr3/libexl3_torch212_compat.so

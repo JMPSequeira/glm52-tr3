@@ -1,0 +1,31 @@
+GLM-5.2 NVFP4/TR3 Optimization
+Copyright 2026 contributors
+
+This product includes software developed by contributors to the vLLM project
+(https://github.com/vllm-project/vllm), distributed under Apache License 2.0.
+
+This product includes modified software developed by local-inference-lab and
+SparkInfer/B12X contributors (https://github.com/local-inference-lab/b12x),
+distributed under Apache License 2.0. The files patches/sparkinfer-final.patch
+and runtime/trellis_hybrid.py contain or describe modifications to that work.
+
+runtime/nvfp4_tr3_hybrid.py is derived from vLLM hybrid quantization work and
+retains the vLLM project copyright and SPDX notice.
+
+The container build uses ExLlamaV3 and Brandon's SM120 retile branch. ExLlamaV3
+is maintained by turboderp-org contributors. Brandon also produced the hybrid
+GLM-5.2 checkpoint, calibration assets, and key integration branches used here.
+
+The container base and runtime include third-party components with their own
+licenses and notices, including NVIDIA CUDA/cuBLAS/cuDNN/NCCL/CUTLASS,
+PyTorch, FlashInfer, QuACK, and the NVIDIA container license. Those components
+are not relicensed by this repository. Their license files and notices remain
+inside the container image.
+
+The GLM-5.2 model and the brandonmusic/GLM-5.2-NVFP4-TR3-Hybrid checkpoint are
+not distributed in this repository or container. Their respective model cards,
+licenses, and terms apply separately.
+
+Additional human-readable attribution is provided in CREDITS.md. Names and
+trademarks are used only to describe provenance and remain the property of
+their respective owners.

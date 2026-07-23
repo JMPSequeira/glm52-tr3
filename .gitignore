@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.so
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.log
+.env
+.env.*
+.cache/
+models/
+runs/
+results/raw/

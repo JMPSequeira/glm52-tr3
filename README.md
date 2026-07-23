@@ -1,0 +1,188 @@
+# GLM-5.2 NVFP4/TR3 Optimization on Blackwell
+
+A reproducible vLLM/SparkInfer runtime and launch recipe for [`brandonmusic/GLM-5.2-NVFP4-TR3-Hybrid`](https://huggingface.co/brandonmusic/GLM-5.2-NVFP4-TR3-Hybrid) on four NVIDIA RTX PRO 6000 Blackwell GPUs.
+
+The retained configuration preserves the checkpoint's full **1,048,576-token context and KV capacity**, TP4/DCP4 execution, no MTP by default, and admission for eight sequences. The measured optimization target was **C1 at 0–64k context**.
+
+## Result
+
+| Metric | Stock | Retained no-MTP | Change |
+|---|---:|---:|---:|
+| Prefill geometric mean, 8k–64k | 1,777.97 tok/s | **2,455.59 tok/s** | **+38.1%** |
+| Decode geometric mean, 0–64k | 19.70 tok/s | **45.80 tok/s** | **+132.5%** |
+| Model/KV capacity | 1,048,576 | **1,048,576** | preserved |
+| Sequence admission | 4 in the original launcher | **8** | restored target constraint |
+
+### C1 matrix
+
+| Context | Stock prefill | Final prefill | Stock decode | Final decode |
+|---:|---:|---:|---:|---:|
+| 0 / 8k | 2,038 tok/s | **2,523 tok/s** | 22.38 tok/s | **46.24 tok/s** |
+| 16k | 2,001 tok/s | **2,457 tok/s** | 18.70 tok/s | **46.23 tok/s** |
+| 32k | 1,638 tok/s | **2,447 tok/s** | 19.16 tok/s | **45.74 tok/s** |
+| 64k | 1,496 tok/s | **2,397 tok/s** | 18.76 tok/s | **45.02 tok/s** |
+
+The clean source-built image reproduced the result at **2,466.84 prefill** and **45.84 decode tok/s** geometric mean (+0.46% / +0.08% versus the retained image) and sustained **206.01 aggregate tok/s at C8** with zero prior context.
+
+An optional C1-specialized greedy MTP4 recipe reached **90.29 tok/s decode geometric mean** at 0–64k. It is not the default: MTP4 was poor under concurrent C4 service, while the project contract requires a dependable no-MTP/C8 recipe.
+
+Full findings, rejected experiments, and caveats are in [`REPORT.md`](REPORT.md). The development sequence is in [`MILESTONES.md`](MILESTONES.md).
+
+### Published BF16-reference quality measurement
+
+Checkpoint author **Brandon M. Music** published five teacher-forced, full-vocabulary comparisons against stored base-model BF16 logits for the hybrid serving path. With the production `nvfp4_ds_mla` KV format, mean KLD was **0.149049** (runs: 0.146681, 0.145467, 0.146602, 0.151969, 0.154528; sample SD 0.003968). The protocol scored 2,047 next-token positions from one fixed 2,048-token `Salesforce/wikitext` window per fresh boot, with TP4/DCP4 and speculative decoding disabled.
+
+This is end-to-end candidate-output divergence, not a weight-only isolation of NVFP4/TR3 quantization. The evaluator source, stored BF16 logits, exact WikiText window, and KL direction were not published. See the immutable [machine-readable artifact](https://huggingface.co/brandonmusic/GLM-5.2-NVFP4-TR3-Hybrid/blob/1d10e2114aa8a3f0bde44809808bbddee168c93a/benchmarks/2026-07-18/kld-bf16-reference.json).
+
+## What changed
+
+```mermaid
+flowchart LR
+    A[Hybrid checkpoint] --> B{Expert tier}
+    B -->|64 hot experts| C[ModelOpt NVFP4]
+    B -->|192 tail experts| D[EXL3 Trellis]
+    C --> E[Persistent mixed W4A16 grid]
+    D --> E
+    E --> F[One mixed top-k reduction]
+    F --> G[TP4 / DCP4 vLLM]
+    G --> H[Compressed MLA KV: 1M tokens]
+```
+
+The final stack combines:
+
+- a persistent mixed NVFP4/Trellis W4A16 MoE kernel;
+- planned Trellis prefill and decode paths;
+- concurrent kept-NVFP4 and Trellis-tail execution where applicable;
+- full compressed-KV gather through 64k tokens;
+- 64-token KV blocks and an exact 4,096-block global KV budget;
+- 5,120-token no-MTP scheduling, C8 admission, and graph ceiling 16;
+- retained 128×128 mixed-kernel tiles for no-MTP decode;
+- an optional causal verifier-to-decode route, absorbed MXFP8 MLA BMM, and 64×256 mixed tiles for MTP4 C1.
+
+## Tested rig
+
+- **GPU:** 4× NVIDIA RTX PRO 6000 Blackwell Max-Q, 96 GB each
+- **Architecture:** SM120
+- **Parallelism:** TP4 / DCP4, A2A backend
+- **CUDA runtime:** 13.2.1
+- **cuDNN:** 9.22
+- **NCCL:** 2.30.4, PCIe-focused build
+- **Model:** GLM-5.2 NVFP4/TR3 hybrid checkpoint
+
+The kernels are architecture-specific. Other Blackwell configurations may work but are not benchmark-qualified by this repository.
+
+## Quick start
+
+### 1. Requirements
+
+- Linux with a recent NVIDIA driver compatible with CUDA 13.2
+- Podman or Docker with NVIDIA Container Toolkit support
+- Four SM120 GPUs with enough aggregate VRAM for the model and exact 1M KV pool
+- The Hugging Face checkpoint in the standard cache layout
+
+Download the pinned checkpoint revision:
+
+```bash
+huggingface-cli download \
+  brandonmusic/GLM-5.2-NVFP4-TR3-Hybrid \
+  --revision 002eb6732dd8def0359915572eb5e22129244321
+```
+
+### 2. Build the runtime
+
+```bash
+./docker/build.sh
+```
+
+The reproducible build pins the public base image plus exact vLLM, SparkInfer/B12X, and ExLlamaV3 revisions. It compiles the SM120 extension locally; model weights are not included.
+
+Podman is the default. For Docker, use `CONTAINER_ENGINE=docker` for both build and launch commands.
+
+### 3. Launch the retained no-MTP recipe
+
+```bash
+./scripts/launch-no-mtp.sh
+```
+
+The launcher does not hardcode `CUDA_VISIBLE_DEVICES` or GPU indices. It exposes the runtime's available GPUs. To pass an explicit launcher-level selection only when needed:
+
+```bash
+GPUS=0,1,2,3 ./scripts/launch-no-mtp.sh
+```
+
+Useful overrides:
+
+```bash
+PORT=9300 \
+MODEL_CACHE="$HOME/.cache/huggingface" \
+CACHE="$HOME/.cache/vllm-glm52-tr3" \
+./scripts/launch-no-mtp.sh
+```
+
+The launcher stays attached as a supervisor, reports readiness, and terminates the container if startup or health checks fail.
+
+### 4. Query the OpenAI-compatible API
+
+```bash
+curl http://127.0.0.1:9300/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "GLM-5.2",
+    "messages": [{"role": "user", "content": "Explain NVFP4 briefly."}],
+    "temperature": 0,
+    "max_tokens": 128
+  }'
+```
+
+## Optional MTP4 C1 recipe
+
+```bash
+./scripts/launch-mtp4-c1.sh
+```
+
+This selects greedy MTP4, C4 admission, graph16, 2,048 scheduled tokens, a five-row verifier path, absorbed MXFP8 MLA BMM, and 64×256 mixed-MoE tiles. It is a **C1 latency/throughput specialization**, not the recommended concurrent-service configuration.
+
+A deterministic 300k-token needle test passed both the forced B12X verifier route and its safe extend control. That is one spot check, not proof for every needle position or the entire 1M window.
+
+## Container build details
+
+Override the local output tag if needed:
+
+```bash
+IMAGE=localhost/glm52-tr3:runtime-v1 ./docker/build.sh
+```
+
+The launcher defaults to this local tag. Set `IMAGE` explicitly to use an independently built or published registry image.
+
+## Benchmark and retrieval tools
+
+The benchmark numbers were collected with [`local-inference-lab/llm-inference-bench`](https://github.com/local-inference-lab/llm-inference-bench). Machine-readable retained metrics are in [`results/summary.json`](results/summary.json).
+
+Run the standalone long-context probe against a healthy server:
+
+```bash
+./tools/probe-long-context-retrieval.py \
+  --host 127.0.0.1 \
+  --port 9300 \
+  --target-tokens 300000 \
+  --needle-fraction 0.5 \
+  --output result.json
+```
+
+## Repository layout
+
+```text
+config/       calibrated NVFP4 MLA scale asset
+docker/       pinned source build
+patches/      SparkInfer Trellis and mixed-kernel patch series
+runtime/      vLLM integration, hybrid loader, kernel, entrypoint
+scripts/      retained no-MTP and optional MTP4 launch recipes
+tools/        deterministic long-context retrieval probe
+results/      compact machine-readable benchmark summary
+```
+
+## Credits and license
+
+This work is an integration and optimization effort built on substantial upstream engineering. See [`CREDITS.md`](CREDITS.md) and [`NOTICE`](NOTICE) for specific attribution to Z.ai, Brandon, David Young, local-inference-lab contributors, vLLM, SparkInfer/B12X, ExLlamaV3, NVIDIA, VerdictAI, and the other projects that made the result possible.
+
+Repository-authored code is licensed under Apache-2.0. Upstream components and the model retain their own licenses and terms; see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).

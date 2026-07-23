@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+export MODEL_ID="${MODEL_ID:-glm52-tr3-mtp4-c1}"
+export MTP=4
+export MTP_DRAFT_SAMPLE_METHOD=greedy
+export MAX_NUM_SEQS="${MAX_NUM_SEQS:-4}"
+export MAX_BATCHED_TOKENS="${MAX_BATCHED_TOKENS:-2048}"
+export GRAPH="${GRAPH:-16}"
+export PLANNED_TAIL=1
+export PLANNED_TAIL_OVERLAP=1
+export PLANNED_PREFILL=1
+export PLANNED_PREFILL_MAX_M=2048
+export PLANNED_PREFILL_BLOCK_M=64
+export TRELLIS256=1
+export TRELLIS256_MIN_M=1
+export TRELLIS256_MAX_M=32
+export MIXED_TRELLIS=1
+export MIXED_TRELLIS_MAX_M=5
+export MIXED_TRELLIS_TILE_CONFIG=64,256,64,256
+export SPEC_EXTEND_AS_DECODE=1
+export SPEC_DECODE_MAX_Q=5
+export CKV_GATHER=1
+export CKV_GATHER_MAX_TOKENS=65536
+export ABSORB_BMM=1
+export DISABLE_SHARED_EXPERTS_STREAM=0
+
+exec "$ROOT/scripts/launch-common.sh" "$@"

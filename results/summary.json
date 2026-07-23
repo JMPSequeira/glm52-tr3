@@ -1,0 +1,99 @@
+{
+  "hardware": {
+    "gpus": "4x NVIDIA RTX PRO 6000 Blackwell Max-Q",
+    "vram_per_gpu_gib": 96,
+    "parallelism": "TP4/DCP4",
+    "cuda": "13.2.1"
+  },
+  "constraints": {
+    "model": "brandonmusic/GLM-5.2-NVFP4-TR3-Hybrid",
+    "model_context_tokens": 1048576,
+    "kv_capacity_tokens": 1048576,
+    "primary_benchmark": "C1, 0-64k context",
+    "no_mtp_admission": 8
+  },
+  "stock": {
+    "prefill_tok_s": {
+      "8192": 2038.0,
+      "16384": 2001.0,
+      "32768": 1638.0,
+      "65536": 1496.0
+    },
+    "decode_tok_s": {
+      "0": 22.383646591363274,
+      "16384": 18.70172626034776,
+      "32768": 19.16343950372644,
+      "65536": 18.764863825168025
+    },
+    "prefill_geomean": 1777.969021739569,
+    "decode_geomean": 19.697352332015324
+  },
+  "retained_no_mtp": {
+    "run": 108,
+    "prefill_tok_s": {
+      "8192": 2523.0,
+      "16384": 2457.0,
+      "32768": 2447.0,
+      "65536": 2397.0
+    },
+    "decode_tok_s": {
+      "0": 46.23962195213359,
+      "16384": 46.22775131576171,
+      "32768": 45.73819876897803,
+      "65536": 45.02103002247686
+    },
+    "prefill_geomean": 2455.591393644119,
+    "decode_geomean": 45.80394471932811,
+    "prefill_gain_percent": 38.112158514525895,
+    "decode_gain_percent": 132.5385866448666,
+    "c8_zero_context_aggregate_tok_s": 183.632
+  },
+  "retained_mtp4_c1": {
+    "run": 114,
+    "prefill_tok_s": {
+      "8192": 2329.0,
+      "16384": 2288.0,
+      "32768": 2250.0,
+      "65536": 2181.0
+    },
+    "decode_tok_s": {
+      "0": 90.50650810515307,
+      "16384": 90.99506358625551,
+      "32768": 90.83575885192128,
+      "65536": 88.84911543269045
+    },
+    "prefill_geomean": 2261.3403030954255,
+    "decode_geomean": 90.2925461506125,
+    "admission": 4,
+    "note": "C1 specialization; use MTP3 recipe for concurrent throughput."
+  },
+  "source_image_validation": {
+    "run": 144,
+    "image": "localhost/glm52-tr3:runtime-v1",
+    "prefill_tok_s": {
+      "8192": 2530.0,
+      "16384": 2478.0,
+      "32768": 2457.0,
+      "65536": 2404.0
+    },
+    "decode_tok_s": {
+      "0": 46.31199099724992,
+      "16384": 46.25682690743367,
+      "32768": 45.763807996122075,
+      "65536": 45.04041133489474
+    },
+    "prefill_geomean": 2466.836471671776,
+    "decode_geomean": 45.840405243285545,
+    "versus_retained_prefill_percent": 0.4579376706060678,
+    "versus_retained_decode_percent": 0.07960127491388747,
+    "c8_run": 145,
+    "c8_zero_context_aggregate_tok_s": 206.0055220095812
+  },
+  "retrieval_300k": {
+    "forced_b12x_decode_passed": true,
+    "safe_extend_control_passed": true,
+    "prompt_tokens": 300000,
+    "needle_fraction": 0.5,
+    "prompt_sha256": "b830751ccdbe0eb64e2d55bbb8dcb66adc3e508a1f3f67769196c51e7bb11847"
+  }
+}
