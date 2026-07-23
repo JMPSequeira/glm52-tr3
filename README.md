@@ -184,6 +184,21 @@ The launcher defaults to this local tag. Set `IMAGE` explicitly to use an indepe
 
 The benchmark numbers were collected with [`local-inference-lab/llm-inference-bench`](https://github.com/local-inference-lab/llm-inference-bench). Machine-readable retained metrics are in [`results/summary.json`](results/summary.json).
 
+Install the benchmark framework beside this repository at the measured revision:
+
+```bash
+git clone https://github.com/local-inference-lab/llm-inference-bench ../llm-inference-bench
+git -C ../llm-inference-bench checkout 86cf05c2f42f4d21b909b6e684424ca1aab89fd5
+```
+
+With the server healthy on port 9300, run the exact C1 0–64k matrix using the normal full-screen Rich display:
+
+```bash
+PORT=9300 DISPLAY_MODE=screen ./scripts/bench-c1-0-64k.sh
+```
+
+The wrapper saves `runs/$RUN_ID/bench.json`. Use `DISPLAY_MODE=live` for inline updates or `DISPLAY_MODE=plain` for log-friendly output plus `bench.log`. Set `LLM_INFERENCE_BENCH` when the framework is not in the sibling directory.
+
 Run the standalone long-context probe against a healthy server:
 
 ```bash
@@ -202,7 +217,7 @@ config/       calibrated NVFP4 MLA scale asset
 docker/       pinned source build
 patches/      SparkInfer Trellis and mixed-kernel patch series
 runtime/      vLLM integration, hybrid loader, kernel, entrypoint
-scripts/      default MTP4 and explicit no-MTP launch recipes
+scripts/      launch recipes and interactive C1 benchmark wrapper
 tools/        deterministic long-context retrieval probe
 results/      compact machine-readable benchmark summary
 ```
