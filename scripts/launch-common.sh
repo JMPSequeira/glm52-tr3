@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 
-MODEL_ID="${MODEL_ID:-glm52-tr3-no-mtp}"
+MODEL_ID="${MODEL_ID:-glm52-tr3-mtp4}"
 PORT="${PORT:-9300}"
-MTP="${MTP:-0}"
-MTP_DRAFT_SAMPLE_METHOD="${MTP_DRAFT_SAMPLE_METHOD:-probabilistic}"
+MTP="${MTP:-4}"
+MTP_DRAFT_SAMPLE_METHOD="${MTP_DRAFT_SAMPLE_METHOD:-greedy}"
 IMAGE="${IMAGE:-glm52-tr3:runtime-v1}"
 ENTRYPOINT="${ENTRYPOINT:-/opt/glm52-tr3/serve-final.sh}"
 MODEL_CACHE="${MODEL_CACHE:-$HOME/.cache/huggingface}"

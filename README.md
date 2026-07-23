@@ -2,7 +2,7 @@
 
 A reproducible vLLM/SparkInfer runtime and launch recipe for [`brandonmusic/GLM-5.2-NVFP4-TR3-Hybrid`](https://huggingface.co/brandonmusic/GLM-5.2-NVFP4-TR3-Hybrid) on four NVIDIA RTX PRO 6000 Blackwell GPUs.
 
-The retained configuration preserves the checkpoint's full **1,048,576-token context and KV capacity**, TP4/DCP4 execution, no MTP by default, and admission for eight sequences. The measured optimization target was **C1 at 0–64k context**.
+Both recipes preserve the checkpoint's full **1,048,576-token context and KV capacity** with TP4/DCP4. The image defaults to greedy MTP4 for the C1 target; the explicit no-MTP recipe retains admission for eight sequences. The measured optimization target was **C1 at 0–64k context**.
 
 ## Result
 
@@ -24,7 +24,7 @@ The retained configuration preserves the checkpoint's full **1,048,576-token con
 
 The clean source-built image reproduced the result at **2,466.84 prefill** and **45.84 decode tok/s** geometric mean (+0.46% / +0.08% versus the retained image) and sustained **206.01 aggregate tok/s at C8** with zero prior context.
 
-An optional C1-specialized greedy MTP4 recipe reached **90.29 tok/s decode geometric mean** at 0–64k. It is not the default: MTP4 was poor under concurrent C4 service, while the project contract requires a dependable no-MTP/C8 recipe.
+The default C1-specialized greedy MTP4 recipe reached **90.29 tok/s decode geometric mean** at 0–64k. It is not the concurrent-service recommendation: MTP4 was poor under C4, while the explicit no-MTP recipe preserves dependable C8 admission and retained MTP3 is the stronger speculative C4 result.
 
 Full findings, rejected experiments, and caveats are in [`REPORT.md`](REPORT.md). The development sequence is in [`MILESTONES.md`](MILESTONES.md).
 
@@ -98,16 +98,17 @@ The reproducible build pins the public base image plus exact vLLM, SparkInfer/B1
 
 Podman is the default. For Docker, use `CONTAINER_ENGINE=docker` for both build and launch commands.
 
-### 3. Launch the retained no-MTP recipe
+### 3. Launch the default MTP4 C1 recipe
 
 ```bash
-./scripts/launch-no-mtp.sh
+./scripts/launch-mtp4-c1.sh
 ```
 
-The launcher does not hardcode `CUDA_VISIBLE_DEVICES` or GPU indices. It exposes the runtime's available GPUs. To pass an explicit launcher-level selection only when needed:
+The image and launcher default to greedy MTP4. Override the depth with `MTP`, or use the explicit no-MTP recipe:
 
 ```bash
-GPUS=0,1,2,3 ./scripts/launch-no-mtp.sh
+MTP=3 ./scripts/launch-mtp4-c1.sh
+./scripts/launch-no-mtp.sh
 ```
 
 Useful overrides:
@@ -116,7 +117,7 @@ Useful overrides:
 PORT=9300 \
 MODEL_CACHE="$HOME/.cache/huggingface" \
 CACHE="$HOME/.cache/vllm-glm52-tr3" \
-./scripts/launch-no-mtp.sh
+./scripts/launch-mtp4-c1.sh
 ```
 
 The launcher stays attached as a supervisor, reports readiness, and terminates the container if startup or health checks fail.
@@ -134,15 +135,40 @@ curl http://127.0.0.1:9300/v1/chat/completions \
   }'
 ```
 
-## Optional MTP4 C1 recipe
+## MTP results and optional MTP4 C1 recipe
+
+All rows used greedy drafting, TP4/DCP4, graph ceiling 16, 2,048 scheduled tokens, compressed-KV gather through 64k, and exactly 1,048,576 model/KV tokens.
+
+### C1 prefill
+
+| Depth | 8k | 16k | 32k | 64k | Geometric mean |
+|---|---:|---:|---:|---:|---:|
+| MTP3, run 097 | 2,344 | 2,311 | 2,255 | 2,179 | **2,271.38 tok/s** |
+| MTP4, run 114 | 2,329 | 2,288 | 2,250 | 2,181 | **2,261.34 tok/s** |
+
+### C1 sustained decode
+
+| Depth | 0 | 16k | 32k | 64k | Geometric mean |
+|---|---:|---:|---:|---:|---:|
+| MTP3, run 097 | 88.234 | 89.203 | 88.803 | 87.361 | **88.398 tok/s** |
+| MTP4, run 114 | **90.507** | **90.995** | **90.836** | **88.849** | **90.293 tok/s** |
+
+MTP4 improved the matched C1 geometric mean by 2.79% and the retained MTP3 result by 2.14%. It did **not** generalize to concurrent service:
+
+| Depth | Concurrency | Aggregate decode | Per request | Decision |
+|---|---:|---:|---:|---|
+| MTP3, run 098 | C4 | **204.487 tok/s** | **51.122 tok/s** | retained for concurrent speculative serving |
+| MTP4, run 118 | C4 | 36.015 tok/s | 9.004 tok/s | rejected for concurrent serving |
+
+Launch the C1-specialized MTP4 configuration:
 
 ```bash
 ./scripts/launch-mtp4-c1.sh
 ```
 
-This selects greedy MTP4, C4 admission, graph16, 2,048 scheduled tokens, a five-row verifier path, absorbed MXFP8 MLA BMM, and 64×256 mixed-MoE tiles. It is a **C1 latency/throughput specialization**, not the recommended concurrent-service configuration.
+This selects a five-row verifier path, absorbed MXFP8 MLA BMM, and 64×256 mixed-MoE tiles. A deterministic 300k-token needle test passed both the forced B12X verifier route and its safe extend control. That is one spot check, not proof for every needle position or the entire 1M window.
 
-A deterministic 300k-token needle test passed both the forced B12X verifier route and its safe extend control. That is one spot check, not proof for every needle position or the entire 1M window.
+Exact values are retained in [`results/summary.json`](results/summary.json); methodology and rejected variants are in [`REPORT.md`](REPORT.md).
 
 ## Container build details
 
@@ -176,7 +202,7 @@ config/       calibrated NVFP4 MLA scale asset
 docker/       pinned source build
 patches/      SparkInfer Trellis and mixed-kernel patch series
 runtime/      vLLM integration, hybrid loader, kernel, entrypoint
-scripts/      retained no-MTP and optional MTP4 launch recipes
+scripts/      default MTP4 and explicit no-MTP launch recipes
 tools/        deterministic long-context retrieval probe
 results/      compact machine-readable benchmark summary
 ```

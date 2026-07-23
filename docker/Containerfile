@@ -85,4 +85,6 @@ RUN chmod 0755 /opt/glm52-tr3/serve-final.sh /opt/glm52-tr3/patch-v19-fused-tr3.
     && /opt/venv/bin/python -c \
          'from vllm.model_executor.layers.quantization import get_quantization_config; assert get_quantization_config("nvfp4_tr3_hybrid").__name__ == "NvFp4Tr3HybridConfig"'
 
-ENV B12X_TR3_TORCH_ABI_SHIM=/opt/glm52-tr3/libexl3_torch212_compat.so
+ENV B12X_TR3_TORCH_ABI_SHIM=/opt/glm52-tr3/libexl3_torch212_compat.so \
+    MTP=4 \
+    MTP_DRAFT_SAMPLE_METHOD=greedy

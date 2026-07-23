@@ -48,6 +48,28 @@
     "decode_gain_percent": 132.5385866448666,
     "c8_zero_context_aggregate_tok_s": 183.632
   },
+  "retained_mtp3": {
+    "c1_run": 97,
+    "prefill_tok_s": {
+      "8192": 2344.0,
+      "16384": 2311.0,
+      "32768": 2255.0,
+      "65536": 2179.0
+    },
+    "decode_tok_s": {
+      "0": 88.23377329049508,
+      "16384": 89.20319563698531,
+      "32768": 88.80287769960717,
+      "65536": 87.36114073091942
+    },
+    "prefill_geomean": 2271.382797630017,
+    "decode_geomean": 88.39753408257832,
+    "c4_run": 98,
+    "c4_zero_context_aggregate_tok_s": 204.486898946885,
+    "c4_zero_context_per_request_tok_s": 51.12172473672125,
+    "admission": 4,
+    "note": "Retained concurrent-service speculative recipe."
+  },
   "retained_mtp4_c1": {
     "run": 114,
     "prefill_tok_s": {
@@ -65,7 +87,10 @@
     "prefill_geomean": 2261.3403030954255,
     "decode_geomean": 90.2925461506125,
     "admission": 4,
-    "note": "C1 specialization; use MTP3 recipe for concurrent throughput."
+    "c4_run": 118,
+    "c4_zero_context_aggregate_tok_s": 36.01474975598059,
+    "c4_zero_context_per_request_tok_s": 9.003687438995147,
+    "note": "C1 specialization; C4 throughput rejected in favor of MTP3."
   },
   "source_image_validation": {
     "run": 144,
