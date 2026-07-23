@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Integrate the mixed NVFP4/TR3 loader into a pinned vLLM source tree."""
+"""Integrate the hybrid loader and B12X DCP workspace fix into pinned vLLM."""
 
 from __future__ import annotations
 
@@ -109,6 +109,45 @@ def patch(root: Path) -> None:
         "            return False\n"
         "        return bool(loader(self, name, loaded_weight))\n\n"
         "    def load_weights(\n",
+    )
+
+    sparse_mla = root / "v1/attention/backends/mla/b12x_mla_sparse.py"
+    replace_once(
+        sparse_mla,
+        "        expected_attn_stride = (\n"
+        "            self.kv_lora_rank,\n"
+        "            (self._max_batched if self._pad_heads else num_tokens) * self.kv_lora_rank,\n"
+        "            1,\n"
+        "        )\n"
+        "        if (\n"
+        "            tuple(attn_out.shape)\n"
+        "            != (num_tokens, self._input_num_heads, self.kv_lora_rank)\n"
+        "            or tuple(attn_out.stride()) != expected_attn_stride\n",
+        "        # The B12X plan may round its head-major output pitch above both\n"
+        "        # num_tokens and vLLM's speculative-decode-adjusted batch limit\n"
+        "        # (for example, 2,048 rows for a 2,047-token MTP prefill chunk).\n"
+        "        # Projection compacts this view before cuBLAS, so accept any\n"
+        "        # integral head pitch that covers all visible token rows.\n"
+        "        attn_stride = tuple(attn_out.stride())\n"
+        "        min_head_pitch = num_tokens * self.kv_lora_rank\n"
+        "        valid_attn_stride = (\n"
+        "            len(attn_stride) == 3\n"
+        "            and attn_stride[0] == self.kv_lora_rank\n"
+        "            and attn_stride[1] >= min_head_pitch\n"
+        "            and attn_stride[1] % self.kv_lora_rank == 0\n"
+        "            and attn_stride[2] == 1\n"
+        "        )\n"
+        "        if (\n"
+        "            tuple(attn_out.shape)\n"
+        "            != (num_tokens, self._input_num_heads, self.kv_lora_rank)\n"
+        "            or not valid_attn_stride\n",
+    )
+    replace_once(
+        sparse_mla,
+        '                f"{tuple(attn_out.stride())}, expected stride="\n'
+        '                f"{expected_attn_stride}"\n',
+        '                f"{attn_stride}, required minimum head pitch="\n'
+        '                f"{min_head_pitch}"\n',
     )
 
 

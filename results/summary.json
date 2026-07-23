@@ -120,5 +120,20 @@
     "prompt_tokens": 300000,
     "needle_fraction": 0.5,
     "prompt_sha256": "b830751ccdbe0eb64e2d55bbb8dcb66adc3e508a1f3f67769196c51e7bb11847"
+  },
+  "mtp4_128k_validation": {
+    "c1_run": 146,
+    "c1_prompt_tokens": 131072,
+    "c1_retrieval_passed": true,
+    "c1_request_seconds": 72.02177571499487,
+    "c4_run": 147,
+    "c4_aggregate_tok_s": 39.646686007203506,
+    "c4_per_request_tok_s": 9.911671501800877,
+    "c4_avg_running_reqs": 4,
+    "c4_max_running_reqs": 4,
+    "c4_avg_queue_reqs": 0,
+    "c4_capacity_limited": false,
+    "c4_request_errors": 0,
+    "note": "Correctness and admission qualification; MTP3 remains the concurrent-performance recommendation."
   }
 }

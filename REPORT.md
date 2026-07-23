@@ -83,6 +83,12 @@ MTP4 is optional because it did not retain concurrent-service throughput.
 
 A deterministic prompt was calibrated through `/tokenize` to exactly 300,000 tokens with a needle at 50%. Both forced verifier-to-B12X decode and the safe extend control returned exactly `KITE-7391-ONYX` from the same prompt SHA-256. This did not reproduce the reported 300k retrieval failure, but it remains one prompt and one position rather than exhaustive 1M-context qualification.
 
+### 8. Padded MTP prefill workspace correctness
+
+The first exact 128k MTP4 request exposed a B12X DCP projection contract bug, not a KV-capacity failure. Speculative scheduling produced a visible 2,047-token prefill chunk while the B12X head-major output retained its safe 2,048-row aligned pitch. The old validator required a compact stride and killed the engine before projection, even though projection immediately compacts the view before cuBLAS.
+
+The publication patch now validates the actual invariant: a unit inner stride, a token stride equal to the latent rank, and an integral head pitch large enough to cover every visible token row. Workspace provenance is still checked separately. An exact 131,072-token C1 retrieval request completed successfully. A 128k C4 sustained check then reported average/max running requests of 4/4, zero queue, zero request errors, and 39.647 aggregate tok/s. This qualifies correctness and admission only; it does not change the MTP3 concurrent-performance decision.
+
 ## What did not work
 
 ### Oversized scheduler batches

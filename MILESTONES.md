@@ -43,6 +43,7 @@ The optimization campaign ran from 20–23 July 2026. Run numbers are preserved 
 | Current-v20 and external full-EXL3 transfer | Runs 136–138 | Neutral for the mixed checkpoint; no source cutover |
 | Cooperative whole-grid admission | Runs 140–141 | Numerically valid, performance-neutral; not retained |
 | 300k forced-route retrieval and safe control | Runs 142–143 | Both returned the exact needle; one-position spot check passed |
+| Padded MTP prefill workspace fix | Runs 146–147 | Exact 128k C1 passed; 128k C4 admitted 4/4 with zero errors |
 | Publication package | Source build, retained launch recipes, report, compact results | Final recipe frozen and published |
 
 ## Final state

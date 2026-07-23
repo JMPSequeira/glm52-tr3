@@ -168,6 +168,8 @@ Launch the C1-specialized MTP4 configuration:
 
 This selects a five-row verifier path, absorbed MXFP8 MLA BMM, and 64×256 mixed-MoE tiles. A deterministic 300k-token needle test passed both the forced B12X verifier route and its safe extend control. That is one spot check, not proof for every needle position or the entire 1M window.
 
+The MTP4 image also handles long prefill chunks whose visible token count is smaller than the B12X plan's aligned head-major pitch. The original publication crashed on the first exact 128k C1 request because a 2,047-token MTP chunk used a safe 2,048-row workspace pitch. After the fix, an exact 131,072-token C1 retrieval request passed, and a 128k C4 check admitted all four streams with no queue or request errors (**39.647 aggregate tok/s**). This is a correctness/admission qualification; MTP3 remains the concurrent-performance recommendation.
+
 Exact values are retained in [`results/summary.json`](results/summary.json); methodology and rejected variants are in [`REPORT.md`](REPORT.md).
 
 ## Container build details

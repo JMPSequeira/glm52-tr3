@@ -20,8 +20,8 @@ LABEL org.opencontainers.image.title="GLM-5.2 NVFP4/TR3 optimized runtime" \
 SHELL ["/bin/bash", "-euxo", "pipefail", "-c"]
 
 # Overlay the pinned vLLM source while retaining model-family modules supplied by
-# the Gilded Gnosis base image. The fail-closed patcher adds only the hybrid
-# checkpoint registration and serialized expert-loader hooks.
+# the Gilded Gnosis base image. The fail-closed patcher adds the hybrid
+# checkpoint hooks and corrects the padded B12X DCP projection contract.
 RUN git clone --filter=blob:none --no-checkout "${VLLM_REPO}" /opt/public-build/vllm \
     && git -C /opt/public-build/vllm fetch --depth=1 origin "${VLLM_COMMIT}" \
     && git -C /opt/public-build/vllm checkout --detach "${VLLM_COMMIT}" \
