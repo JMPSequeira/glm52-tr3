@@ -87,4 +87,6 @@ RUN chmod 0755 /opt/glm52-tr3/serve-final.sh /opt/glm52-tr3/patch-v19-fused-tr3.
 
 ENV B12X_TR3_TORCH_ABI_SHIM=/opt/glm52-tr3/libexl3_torch212_compat.so \
     MTP=4 \
-    MTP_DRAFT_SAMPLE_METHOD=greedy
+    MTP_DRAFT_SAMPLE_METHOD=probabilistic \
+    MTP_BATCH_SCHEDULE=[[1,1,4],[2,4,3]] \
+    CUDAGRAPH_CAPTURE_SIZES=1,2,4,8,16,20

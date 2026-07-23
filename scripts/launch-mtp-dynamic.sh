@@ -4,12 +4,14 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-export MODEL_ID="${MODEL_ID:-glm52-tr3-mtp${MTP:-4}-c1}"
+export MODEL_ID="${MODEL_ID:-glm52-tr3-mtp-dynamic}"
 export MTP="${MTP:-4}"
-export MTP_DRAFT_SAMPLE_METHOD="${MTP_DRAFT_SAMPLE_METHOD:-greedy}"
+export MTP_DRAFT_SAMPLE_METHOD="${MTP_DRAFT_SAMPLE_METHOD:-probabilistic}"
+export MTP_BATCH_SCHEDULE="${MTP_BATCH_SCHEDULE:-[[1,1,4],[2,4,3]]}"
 export MAX_NUM_SEQS="${MAX_NUM_SEQS:-4}"
 export MAX_BATCHED_TOKENS="${MAX_BATCHED_TOKENS:-2048}"
-export GRAPH="${GRAPH:-16}"
+export GRAPH="${GRAPH:-20}"
+export CUDAGRAPH_CAPTURE_SIZES="${CUDAGRAPH_CAPTURE_SIZES:-1,2,4,8,16,20}"
 export PLANNED_TAIL=1
 export PLANNED_TAIL_OVERLAP=1
 export PLANNED_PREFILL=1

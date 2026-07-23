@@ -92,6 +92,37 @@
     "c4_zero_context_per_request_tok_s": 9.003687438995147,
     "note": "C1 specialization; C4 throughput rejected in favor of MTP3."
   },
+  "retained_dynamic_concurrent": {
+    "candidate_run": 173,
+    "control_run": 174,
+    "image": "localhost/glm52-tr3:runtime-v2",
+    "draft_sample_method": "probabilistic",
+    "batch_schedule": [[1, 1, 4], [2, 4, 3]],
+    "cudagraph_capture_sizes": [1, 2, 4, 8, 16, 20],
+    "c2": {
+      "aggregate_tok_s": 139.9928,
+      "per_request_tok_s": 69.9964,
+      "spec_cycle_ms": 21.4325,
+      "spec_cycles_per_second": 46.658,
+      "spec_accept_length": 2.0007,
+      "cycle_rate_gain_percent_vs_control": 0.5701,
+      "admission": 2,
+      "request_errors": 0
+    },
+    "c4": {
+      "aggregate_tok_s": 206.8187,
+      "per_request_tok_s": 51.7047,
+      "spec_cycle_ms": 14.5939,
+      "spec_cycles_per_second": 68.5218,
+      "spec_accept_length": 2.0156,
+      "cycle_rate_gain_percent_vs_control": 4.0533,
+      "admission": 4,
+      "request_errors": 0
+    },
+    "conservative_c4_cycle_rate_gain_percent": 1.5847,
+    "model_and_kv_capacity_tokens": 1048576,
+    "note": "Retained C1-C4 recipe. Raw throughput is acceptance-sensitive; cycle-rate gain is the isolated route-skip signal."
+  },
   "source_image_validation": {
     "run": 144,
     "image": "localhost/glm52-tr3:runtime-v1",
@@ -134,6 +165,6 @@
     "c4_avg_queue_reqs": 0,
     "c4_capacity_limited": false,
     "c4_request_errors": 0,
-    "note": "Correctness and admission qualification; MTP3 remains the concurrent-performance recommendation."
+    "note": "Correctness and admission qualification; the dynamic concurrent recipe dispatches MTP3 at C2-C4."
   }
 }

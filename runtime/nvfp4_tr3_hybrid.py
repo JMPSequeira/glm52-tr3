@@ -681,8 +681,8 @@ class NvFp4Tr3HybridMoEMethod(NvFp4Nf3HybridMoEMethod):
             mcg=int(self.quant_config.tr3_metadata["mcg_multiplier"]),
             tile_config=_T256_TILE_CONFIG,
         )
-        route_map = torch.zeros(
-            state.num_experts, dtype=torch.int32, device=backing.device
+        route_map = torch.full(
+            (state.num_experts,), -1, dtype=torch.int32, device=backing.device
         )
         output_map = torch.full_like(route_map, -1)
         for global_id, (tier, local_id) in state.remap.items():

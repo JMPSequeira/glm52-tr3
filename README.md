@@ -57,7 +57,7 @@ The final stack combines:
 - 64-token KV blocks and an exact 4,096-block global KV budget;
 - 5,120-token no-MTP scheduling, C8 admission, and graph ceiling 16;
 - retained 128×128 mixed-kernel tiles for no-MTP decode;
-- an optional causal verifier-to-decode route, absorbed MXFP8 MLA BMM, and 64×256 mixed tiles for MTP4 C1.
+- probabilistic dynamic MTP with MTP4 at C1, MTP3 at C2–C4, graph shapes through 20, 64×256 MTP tiles, and unmapped planned-Trellis routes skipped.
 
 ## Tested rig
 
@@ -98,16 +98,22 @@ The reproducible build pins the public base image plus exact vLLM, SparkInfer/B1
 
 Podman is the default. For Docker, use `CONTAINER_ENGINE=docker` for both build and launch commands.
 
-### 3. Launch the default MTP4 C1 recipe
+### 3. Launch the default adaptive MTP recipe
 
 ```bash
-./scripts/launch-mtp4-c1.sh
+./scripts/launch-mtp-dynamic.sh
 ```
 
-The image and launcher default to greedy MTP4. Override the depth with `MTP`, or use the explicit no-MTP recipe:
+The launcher uses probabilistic drafting and a batch-aware depth schedule:
+
+- C1: MTP4
+- C2–C4: MTP3
+- CUDA graphs: `1,2,4,8,16,20`
+- exact model/KV capacity: 1,048,576 tokens
+
+Use the explicit no-MTP recipe for C8 admission:
 
 ```bash
-MTP=3 ./scripts/launch-mtp4-c1.sh
 ./scripts/launch-no-mtp.sh
 ```
 
@@ -117,7 +123,7 @@ Useful overrides:
 PORT=9300 \
 MODEL_CACHE="$HOME/.cache/huggingface" \
 CACHE="$HOME/.cache/vllm-glm52-tr3" \
-./scripts/launch-mtp4-c1.sh
+./scripts/launch-mtp-dynamic.sh
 ```
 
 The launcher stays attached as a supervisor, reports readiness, and terminates the container if startup or health checks fail.
@@ -135,9 +141,9 @@ curl http://127.0.0.1:9300/v1/chat/completions \
   }'
 ```
 
-## MTP results and optional MTP4 C1 recipe
+## MTP results and concurrent serving
 
-All rows used greedy drafting, TP4/DCP4, graph ceiling 16, 2,048 scheduled tokens, compressed-KV gather through 64k, and exactly 1,048,576 model/KV tokens.
+The retained C1 depth sweep used greedy drafting, TP4/DCP4, 2,048 scheduled tokens, compressed-KV gather through 64k, and exactly 1,048,576 model/KV tokens.
 
 ### C1 prefill
 
@@ -153,22 +159,20 @@ All rows used greedy drafting, TP4/DCP4, graph ceiling 16, 2,048 scheduled token
 | MTP3, run 097 | 88.234 | 89.203 | 88.803 | 87.361 | **88.398 tok/s** |
 | MTP4, run 114 | **90.507** | **90.995** | **90.836** | **88.849** | **90.293 tok/s** |
 
-MTP4 improved the matched C1 geometric mean by 2.79% and the retained MTP3 result by 2.14%. It did **not** generalize to concurrent service:
+MTP4 improved the matched C1 geometric mean by 2.79%, but paying for a four-token draft at every concurrent batch was inefficient. The default launcher therefore dispatches MTP4 only at C1 and MTP3 at C2–C4.
 
-| Depth | Concurrency | Aggregate decode | Per request | Decision |
-|---|---:|---:|---:|---|
-| MTP3, run 098 | C4 | **204.487 tok/s** | **51.122 tok/s** | retained for concurrent speculative serving |
-| MTP4, run 118 | C4 | 36.015 tok/s | 9.004 tok/s | rejected for concurrent serving |
+### Corrected concurrent recipe
 
-Launch the C1-specialized MTP4 configuration:
+The concurrent path uses probabilistic drafting, graph shapes through 20 rows, mixed persistent MoE through M=4, planned Trellis above M=4, and skips unmapped NVFP4 routes in the Trellis plan.
 
-```bash
-./scripts/launch-mtp4-c1.sh
-```
+| Run | Concurrency | Aggregate decode | Per request | Speculative cycle |
+|---|---:|---:|---:|---:|
+| 173 | C2 | **139.993 tok/s** | **69.996 tok/s** | **21.4325 ms** |
+| 173 | C4 | **206.819 tok/s** | **51.705 tok/s** | **14.5939 ms** |
 
-This selects a five-row verifier path, absorbed MXFP8 MLA BMM, and 64×256 mixed-MoE tiles. A deterministic 300k-token needle test passed both the forced B12X verifier route and its safe extend control. That is one spot check, not proof for every needle position or the entire 1M window.
+Both cells admitted every requested stream with zero request errors and retained exactly 1,048,576 model/KV tokens. Against the immediately following unchanged-map control, route skip improved cycles/second by 0.570% at C2 and 4.053% at C4. Across the broader three-candidate/two-control C4 sample, the conservative gain was **1.585%**. Raw throughput is acceptance-sensitive and is not used as the isolated source-change claim.
 
-The MTP4 image also handles long prefill chunks whose visible token count is smaller than the B12X plan's aligned head-major pitch. The original publication crashed on the first exact 128k C1 request because a 2,047-token MTP chunk used a safe 2,048-row workspace pitch. After the fix, an exact 131,072-token C1 retrieval request passed, and a 128k C4 check admitted all four streams with no queue or request errors (**39.647 aggregate tok/s**). This is a correctness/admission qualification; MTP3 remains the concurrent-performance recommendation.
+The padded-workspace correction also passed an exact 131,072-token C1 retrieval request and admitted all four streams at 128k/C4 with no queue or request errors. This is a correctness/admission qualification, not an exhaustive 1M retrieval proof.
 
 Exact values are retained in [`results/summary.json`](results/summary.json); methodology and rejected variants are in [`REPORT.md`](REPORT.md).
 
@@ -177,7 +181,7 @@ Exact values are retained in [`results/summary.json`](results/summary.json); met
 Override the local output tag if needed:
 
 ```bash
-IMAGE=localhost/glm52-tr3:runtime-v1 ./docker/build.sh
+IMAGE=localhost/glm52-tr3:runtime-v2 ./docker/build.sh
 ```
 
 The launcher defaults to this local tag. Set `IMAGE` explicitly to use an independently built or published registry image.

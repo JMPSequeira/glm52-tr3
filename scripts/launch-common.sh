@@ -5,8 +5,10 @@ set -euo pipefail
 MODEL_ID="${MODEL_ID:-glm52-tr3-mtp4}"
 PORT="${PORT:-9300}"
 MTP="${MTP:-4}"
-MTP_DRAFT_SAMPLE_METHOD="${MTP_DRAFT_SAMPLE_METHOD:-greedy}"
-IMAGE="${IMAGE:-glm52-tr3:runtime-v1}"
+MTP_DRAFT_SAMPLE_METHOD="${MTP_DRAFT_SAMPLE_METHOD:-probabilistic}"
+MTP_BATCH_SCHEDULE="${MTP_BATCH_SCHEDULE:-}"
+CUDAGRAPH_CAPTURE_SIZES="${CUDAGRAPH_CAPTURE_SIZES:-}"
+IMAGE="${IMAGE:-glm52-tr3:runtime-v2}"
 ENTRYPOINT="${ENTRYPOINT:-/opt/glm52-tr3/serve-final.sh}"
 MODEL_CACHE="${MODEL_CACHE:-$HOME/.cache/huggingface}"
 CACHE="${CACHE:-$HOME/.cache/vllm-glm52-tr3-v19}"
@@ -94,6 +96,7 @@ if [[ -n "$PROFILE_HOST_DIR" ]]; then
     --profiler-config.wait_iterations=0
   )
 fi
+SERVER_ARGS+=("$@")
 
 port_accepting() {
   python3 - "$PORT" <<'PY'
@@ -142,6 +145,8 @@ container_id="$("$ENGINE" run \
   -e DCP_PREFILL_WORKSPACE=1 \
   -e "MTP=$MTP" \
   -e "MTP_DRAFT_SAMPLE_METHOD=$MTP_DRAFT_SAMPLE_METHOD" \
+  -e "MTP_BATCH_SCHEDULE=$MTP_BATCH_SCHEDULE" \
+  -e "CUDAGRAPH_CAPTURE_SIZES=$CUDAGRAPH_CAPTURE_SIZES" \
   -e "VLLM_MTP_LOCAL_ARGMAX=$MTP_LOCAL_ARGMAX" \
   -e "MAX_NUM_SEQS=$MAX_NUM_SEQS" \
   -e "GRAPH=$GRAPH" \

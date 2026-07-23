@@ -141,6 +141,7 @@ This is why scheduler tuning, route selection, and the mixed routed-MoE kernel t
 
 ## Final decision
 
-- **Default:** no MTP, C8 admission, 5,120 scheduled tokens, graph16, exact 1M model/KV capacity, planned prefill/tail, persistent mixed MoE with 128×128 tiles.
-- **Optional C1 mode:** greedy MTP4, C4 admission, 2,048 scheduled tokens, graph16, verifier decode through Q=5, absorbed MXFP8 MLA BMM, mixed MoE with 64×256 tiles.
-- **Not claimed:** exhaustive 1M retrieval correctness, performance on other GPUs, MTP4 concurrent-service superiority, or gains from rejected upstream/source experiments.
+- **Default C1–C4 recipe:** probabilistic dynamic MTP, MTP4 at C1 and MTP3 at C2–C4, 2,048 scheduled tokens, graph shapes through 20, exact 1M model/KV capacity, planned prefill/tail, persistent mixed MoE through M=4, and unmapped planned-Trellis routes skipped.
+- **Measured concurrent result:** run 173 sustained **139.993 aggregate tok/s at C2** and **206.819 aggregate tok/s at C4**, admitted every stream with zero errors, and improved speculative cycle rate by 0.570%/4.053% against the immediately following unchanged-map control. Use the broader **1.585% C4 cycle-rate gain** as the conservative isolated source-change claim.
+- **C8 mode:** no MTP, 5,120 scheduled tokens, graph16, exact 1M model/KV capacity, planned prefill/tail, and persistent mixed MoE with 128×128 tiles.
+- **Not claimed:** exhaustive 1M retrieval correctness, performance on other GPUs, acceptance-sensitive raw-throughput gains from route skip, or gains from rejected tile/PTX/source experiments.
