@@ -94,6 +94,12 @@ huggingface-cli download \
 ./docker/build.sh
 ```
 
+Or build the same local image through Docker Compose:
+
+```bash
+docker compose build runtime
+```
+
 The reproducible build pins the public base image plus exact vLLM, SparkInfer/B12X, and ExLlamaV3 revisions. It compiles the SM120 extension locally; model weights are not included.
 
 Podman is the default. For Docker, use `CONTAINER_ENGINE=docker` for both build and launch commands.

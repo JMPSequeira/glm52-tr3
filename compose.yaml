@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+name: glm52-tr3
+
+services:
+  runtime:
+    image: "${IMAGE:-glm52-tr3:runtime-v2}"
+    build:
+      context: .
+      dockerfile: docker/Containerfile
