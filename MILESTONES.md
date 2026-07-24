@@ -36,7 +36,7 @@ The optimization campaign ran from 20–23 July 2026. Run numbers are preserved 
 | Milestone | Evidence | Decision |
 |---|---|---|
 | Causal MTP verifier route + mixed MoE | Runs 097–098 | Retain MTP3 for concurrent service; 88.398 C1 geometric mean and 204.5 aggregate tok/s at C4 |
-| 128×128 no-MTP tile specialization | Run 108 | Final no-MTP decode: 45.804 tok/s geometric mean |
+| 128×128 no-MTP tile specialization | Run 108 | No-MTP decode before fused-query work: 45.804 tok/s geometric mean |
 | Final no-MTP C8 smoke | Run 112 | Eight requests admitted; exact 1M capacity retained |
 | MTP depth sweep | Runs 113–118 | MTP4 wins C1 at 90.293 tok/s; MTP6/7 rejected; MTP4 C4 rejected |
 | Exact-M1, local reduction, and tile micro-sweeps | Runs 127–135 | No further material kernel gain |
@@ -45,6 +45,15 @@ The optimization campaign ran from 20–23 July 2026. Run numbers are preserved 
 | 300k forced-route retrieval and safe control | Runs 142–143 | Both returned the exact needle; one-position spot check passed |
 | Padded MTP prefill workspace fix | Runs 146–147 | Exact 128k C1 passed; 128k C4 admitted 4/4 with zero errors |
 | Publication package | Source build, retained launch recipes, report, compact results | Final recipe frozen and published |
+
+## 24 July 2026 — Concurrent route cleanup and fused MLA query
+
+| Milestone | Evidence | Decision |
+|---|---|---|
+| Unmapped planned-Trellis routes skipped | Runs 166–174 | Retain the structural route-map fix; conservative C4 cycle-rate gain 1.585% |
+| Fused BF16 MLA query projection | Runs 175–177 | Retain repeatable +1.200% C1 decode gain; prefill neutral |
+| Runtime v3 source build and smoke | Image `bb76febc8fa8` | Byte-identical measured serving files, exact 1M capacity, exact-output API smoke |
+| Upstream PR readiness review | vLLM #139/#173/#174; SparkInfer #49/#75 | Local stack qualified; upstream dependency stack not merge-ready |
 
 ## Final state
 
@@ -55,8 +64,9 @@ Stock
           └─ planned Trellis execution
               └─ concurrent NVFP4/Trellis tiers
                   └─ persistent mixed MoE
-                      ├─ 128×128 no-MTP / C8 retained default
-                      └─ 64×256 MTP4 / C1 optional specialization
+                      └─ fused MLA query assembly
+                          ├─ 128×128 no-MTP / C8 retained default
+                          └─ 64×256 MTP4 / C1 optional specialization
 ```
 
-The campaign stopped after the remaining tested variations measured neutral, regressed throughput, reduced memory headroom, or changed the workload enough to make the comparison invalid.
+The campaign retained the fused-query source improvement after two consistent candidate runs. Other tested variations measured neutral, regressed throughput, reduced memory headroom, or changed the workload enough to make the comparison invalid.

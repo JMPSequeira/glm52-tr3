@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENGINE="${CONTAINER_ENGINE:-podman}"
-IMAGE="${IMAGE:-glm52-tr3:runtime-v2}"
+IMAGE="${IMAGE:-glm52-tr3:runtime-v3}"
 
 exec "$ENGINE" build \
   --file "$ROOT/docker/Containerfile" \

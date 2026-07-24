@@ -11,21 +11,21 @@ Optimize prefill and decode for `brandonmusic/GLM-5.2-NVFP4-TR3-Hybrid` on four 
 - admission for eight sequences;
 - C1 performance at 0, 16k, 32k, and 64k context as the comparison metric.
 
-More than 140 controlled runs were used to isolate scheduler, KV transport, source, and kernel effects. Every retained behavioral change was checked against exact capacity and startup invariants; new mixed-kernel paths received layer/rank numerical parity checks before throughput comparison.
+More than 170 controlled runs were used to isolate scheduler, KV transport, source, and kernel effects. Every retained behavioral change was checked against exact capacity and startup invariants; new mixed-kernel paths received layer/rank numerical parity checks before throughput comparison.
 
 ## Final retained result
 
 | Context | Stock prefill | Final prefill | Change | Stock decode | Final decode | Change |
 |---:|---:|---:|---:|---:|---:|---:|
-| 0 / 8k | 2,038 | **2,523** | +23.8% | 22.384 | **46.240** | +106.6% |
-| 16k | 2,001 | **2,457** | +22.8% | 18.702 | **46.228** | +147.2% |
-| 32k | 1,638 | **2,447** | +49.4% | 19.163 | **45.738** | +138.7% |
-| 64k | 1,496 | **2,397** | +60.2% | 18.765 | **45.021** | +139.9% |
-| Geometric mean | 1,777.97 | **2,455.59** | **+38.1%** | 19.697 | **45.804** | **+132.5%** |
+| 0 / 8k | 2,038 | **2,750.5** | +35.0% | 22.384 | **46.781** | +109.0% |
+| 16k | 2,001 | **2,666** | +33.2% | 18.702 | **46.763** | +150.0% |
+| 32k | 1,638 | **2,642** | +61.3% | 19.163 | **46.278** | +141.5% |
+| 64k | 1,496 | **2,581** | +72.5% | 18.765 | **45.507** | +142.5% |
+| Geometric mean | 1,777.97 | **2,659.18** | **+49.6%** | 19.697 | **46.329** | **+135.2%** |
 
-All throughput values are tokens/second. Prefill uses 8k for the first row; decode uses zero prior context.
+All throughput values are tokens/second. Prefill uses 8k for the first row; decode uses zero prior context. Final values average independent candidate runs 175 and 177.
 
-The clean source-built publication image reproduced the C1 result at 2,466.84 prefill and 45.840 decode tok/s geometric mean (+0.46% / +0.08% versus the retained image). It also admitted eight simultaneous zero-context streams and sustained **206.006 aggregate tok/s** over a 30-second C8 validation. C8 was an admission constraint, not the primary optimization metric.
+Matched control run 176 measured 45.780 decode tok/s geometric mean; the fused-query candidates improved that by **1.200%** and differed from each other by at most 0.193%. The reproducible `runtime-v3` image contains byte-identical fused-query serving files and passed a full-capacity API smoke. The earlier source-built C8 validation admitted eight simultaneous zero-context streams and sustained **206.006 aggregate tok/s**; C8 remains an admission constraint, not the primary metric.
 
 ## BF16-reference quality evidence
 
@@ -69,7 +69,13 @@ The path reuses the existing planned-decode arena rather than allocating another
 
 The final no-MTP target cycle favored 128×128 tiles. This raised decode from the first mixed-kernel result's 41.0 tok/s geometric mean to 45.8 tok/s without materially changing prefill. MTP verifier shapes instead favor 64×256 tiles; the launch recipes set these independently through an environment-controlled tile tuple.
 
-### 6. Causal MTP verifier routing
+### 6. Fused MLA query projection and assembly
+
+The SM120 decode path previously launched a BF16 query BMM and separate assembly operations in every MLA layer. The retained vLLM/SparkInfer patch dispatches qualified `H=8`, `M=1..32` shapes through one prewarmed fused operation that writes the final `[M,H,576]` query layout directly.
+
+Paired runs 175/177 versus run 176 improved decode by **1.190% / 1.213% / 1.248% / 1.151%** at 0/16k/32k/64k. Averaged prefill moved only 0.072%. The optimization is retained for decode; no prefill gain is claimed.
+
+### 7. Causal MTP verifier routing
 
 The draft model was not the dominant MTP cost. Profiling measured roughly 2.5 ms for all proposals but about 38–40 ms for target verification. Routing causal multi-row verification through B12X sparse decode and absorbing the MXFP8 MLA BMM materially improved C1:
 
@@ -79,11 +85,11 @@ The draft model was not the dominant MTP cost. Profiling measured roughly 2.5 ms
 
 MTP4 is optional because it did not retain concurrent-service throughput.
 
-### 7. Long-context spot qualification
+### 8. Long-context spot qualification
 
 A deterministic prompt was calibrated through `/tokenize` to exactly 300,000 tokens with a needle at 50%. Both forced verifier-to-B12X decode and the safe extend control returned exactly `KITE-7391-ONYX` from the same prompt SHA-256. This did not reproduce the reported 300k retrieval failure, but it remains one prompt and one position rather than exhaustive 1M-context qualification.
 
-### 8. Padded MTP prefill workspace correctness
+### 9. Padded MTP prefill workspace correctness
 
 The first exact 128k MTP4 request exposed a B12X DCP projection contract bug, not a KV-capacity failure. Speculative scheduling produced a visible 2,047-token prefill chunk while the B12X head-major output retained its safe 2,048-row aligned pitch. The old validator required a compact stride and killed the engine before projection, even though projection immediately compacts the view before cuBLAS.
 
@@ -141,7 +147,7 @@ This is why scheduler tuning, route selection, and the mixed routed-MoE kernel t
 
 ## Final decision
 
-- **Default C1–C4 recipe:** probabilistic dynamic MTP, MTP4 at C1 and MTP3 at C2–C4, 2,048 scheduled tokens, graph shapes through 20, exact 1M model/KV capacity, planned prefill/tail, persistent mixed MoE through M=4, and unmapped planned-Trellis routes skipped.
+- **Default C1–C4 recipe:** probabilistic dynamic MTP, MTP4 at C1 and MTP3 at C2–C4, 2,048 scheduled tokens, graph shapes through 20, exact 1M model/KV capacity, fused MLA query assembly, planned prefill/tail, persistent mixed MoE through M=4, and unmapped planned-Trellis routes skipped.
 - **Measured concurrent result:** run 173 sustained **139.993 aggregate tok/s at C2** and **206.819 aggregate tok/s at C4**, admitted every stream with zero errors, and improved speculative cycle rate by 0.570%/4.053% against the immediately following unchanged-map control. Use the broader **1.585% C4 cycle-rate gain** as the conservative isolated source-change claim.
-- **C8 mode:** no MTP, 5,120 scheduled tokens, graph16, exact 1M model/KV capacity, planned prefill/tail, and persistent mixed MoE with 128×128 tiles.
+- **C8 mode:** no MTP, 5,120 scheduled tokens, graph16, exact 1M model/KV capacity, fused MLA query assembly, planned prefill/tail, and persistent mixed MoE with 128×128 tiles.
 - **Not claimed:** exhaustive 1M retrieval correctness, performance on other GPUs, acceptance-sensitive raw-throughput gains from route skip, or gains from rejected tile/PTX/source experiments.

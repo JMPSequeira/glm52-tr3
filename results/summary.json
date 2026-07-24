@@ -29,24 +29,30 @@
     "decode_geomean": 19.697352332015324
   },
   "retained_no_mtp": {
-    "run": 108,
+    "runs": [175, 177],
+    "matched_control_run": 176,
+    "measured_candidate_image": "localhost/glm52-tr3:runtime-v20fix-query",
+    "source_image": "localhost/glm52-tr3:runtime-v3",
     "prefill_tok_s": {
-      "8192": 2523.0,
-      "16384": 2457.0,
-      "32768": 2447.0,
-      "65536": 2397.0
+      "8192": 2750.5,
+      "16384": 2666.0,
+      "32768": 2642.0,
+      "65536": 2581.0
     },
     "decode_tok_s": {
-      "0": 46.23962195213359,
-      "16384": 46.22775131576171,
-      "32768": 45.73819876897803,
-      "65536": 45.02103002247686
+      "0": 46.781030615706115,
+      "16384": 46.76261741813649,
+      "32768": 46.27787585789575,
+      "65536": 45.50717126546431
     },
-    "prefill_geomean": 2455.591393644119,
-    "decode_geomean": 45.80394471932811,
-    "prefill_gain_percent": 38.112158514525895,
-    "decode_gain_percent": 132.5385866448666,
-    "c8_zero_context_aggregate_tok_s": 183.632
+    "prefill_geomean": 2659.1825551803845,
+    "decode_geomean": 46.32927068292639,
+    "prefill_gain_percent": 49.56292953735686,
+    "decode_gain_percent": 135.20557434323072,
+    "fused_query_decode_gain_percent_vs_control": 1.2,
+    "candidate_repeat_max_spread_percent": 0.193,
+    "previous_c8_zero_context_aggregate_tok_s": 183.632,
+    "note": "Runs 175 and 177 are averaged. Runtime-v3 contains byte-identical fused-query serving files and passed a full-capacity API smoke."
   },
   "retained_mtp3": {
     "c1_run": 97,

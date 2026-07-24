@@ -8,8 +8,8 @@ Both recipes preserve the checkpoint's full **1,048,576-token context and KV cap
 
 | Metric | Stock | Retained no-MTP | Change |
 |---|---:|---:|---:|
-| Prefill geometric mean, 8k–64k | 1,777.97 tok/s | **2,455.59 tok/s** | **+38.1%** |
-| Decode geometric mean, 0–64k | 19.70 tok/s | **45.80 tok/s** | **+132.5%** |
+| Prefill geometric mean, 8k–64k | 1,777.97 tok/s | **2,659.18 tok/s** | **+49.6%** |
+| Decode geometric mean, 0–64k | 19.70 tok/s | **46.33 tok/s** | **+135.2%** |
 | Model/KV capacity | 1,048,576 | **1,048,576** | preserved |
 | Sequence admission | 4 in the original launcher | **8** | restored target constraint |
 
@@ -17,12 +17,12 @@ Both recipes preserve the checkpoint's full **1,048,576-token context and KV cap
 
 | Context | Stock prefill | Final prefill | Stock decode | Final decode |
 |---:|---:|---:|---:|---:|
-| 0 / 8k | 2,038 tok/s | **2,523 tok/s** | 22.38 tok/s | **46.24 tok/s** |
-| 16k | 2,001 tok/s | **2,457 tok/s** | 18.70 tok/s | **46.23 tok/s** |
-| 32k | 1,638 tok/s | **2,447 tok/s** | 19.16 tok/s | **45.74 tok/s** |
-| 64k | 1,496 tok/s | **2,397 tok/s** | 18.76 tok/s | **45.02 tok/s** |
+| 0 / 8k | 2,038 tok/s | **2,750 tok/s** | 22.38 tok/s | **46.78 tok/s** |
+| 16k | 2,001 tok/s | **2,666 tok/s** | 18.70 tok/s | **46.76 tok/s** |
+| 32k | 1,638 tok/s | **2,642 tok/s** | 19.16 tok/s | **46.28 tok/s** |
+| 64k | 1,496 tok/s | **2,581 tok/s** | 18.76 tok/s | **45.51 tok/s** |
 
-The clean source-built image reproduced the result at **2,466.84 prefill** and **45.84 decode tok/s** geometric mean (+0.46% / +0.08% versus the retained image) and sustained **206.01 aggregate tok/s at C8** with zero prior context.
+The retained values average independent fused-query runs 175 and 177. Their decode results differed by at most 0.193%; matched control run 176 measured 45.78 tok/s geometric mean. The reproducible `runtime-v3` build contains byte-identical fused-query serving files and completed an exact-output API smoke at full 1M model/KV capacity.
 
 The default C1-specialized greedy MTP4 recipe reached **90.29 tok/s decode geometric mean** at 0–64k. It is not the concurrent-service recommendation: MTP4 was poor under C4, while the explicit no-MTP recipe preserves dependable C8 admission and retained MTP3 is the stronger speculative C4 result.
 
@@ -50,6 +50,7 @@ flowchart LR
 
 The final stack combines:
 
+- fused BF16 MLA query projection and direct query assembly;
 - a persistent mixed NVFP4/Trellis W4A16 MoE kernel;
 - planned Trellis prefill and decode paths;
 - concurrent kept-NVFP4 and Trellis-tail execution where applicable;
@@ -187,7 +188,7 @@ Exact values are retained in [`results/summary.json`](results/summary.json); met
 Override the local output tag if needed:
 
 ```bash
-IMAGE=localhost/glm52-tr3:runtime-v2 ./docker/build.sh
+IMAGE=localhost/glm52-tr3:runtime-v3 ./docker/build.sh
 ```
 
 The launcher defaults to this local tag. Set `IMAGE` explicitly to use an independently built or published registry image.
@@ -227,7 +228,7 @@ Run the standalone long-context probe against a healthy server:
 ```text
 config/       calibrated NVFP4 MLA scale asset
 docker/       pinned source build
-patches/      SparkInfer Trellis and mixed-kernel patch series
+patches/      SparkInfer Trellis, mixed-kernel, and fused-query patch series
 runtime/      vLLM integration, hybrid loader, kernel, entrypoint
 scripts/      launch recipes and interactive C1 benchmark wrapper
 tools/        deterministic long-context retrieval probe

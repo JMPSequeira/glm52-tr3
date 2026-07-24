@@ -13,18 +13,25 @@ LABEL org.opencontainers.image.title="GLM-5.2 NVFP4/TR3 optimized runtime" \
       org.opencontainers.image.description="TP4/DCP4 GLM-5.2 hybrid runtime for four RTX PRO 6000 Blackwell GPUs" \
       org.opencontainers.image.source="https://github.com/JMPSequeira/glm52-tr3" \
       org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.version="runtime-v3" \
       org.opencontainers.image.vllm.revision="${VLLM_COMMIT}" \
+      org.opencontainers.image.vllm.fused-query-patch-sha256="9fb39d027fc8234018c011bb0b1736d68486e3f160a5b4634d054a5f6974bb6c" \
       org.opencontainers.image.sparkinfer.base-revision="${SPARKINFER_COMMIT}" \
+      org.opencontainers.image.sparkinfer.fused-query-patch-sha256="07a0ccd25e2174b4e99842178023a870d5d55e9d9ec71a11b4dee3e66b5ac7dc" \
       org.opencontainers.image.exllamav3.revision="${EXLLAMAV3_COMMIT}"
 
 SHELL ["/bin/bash", "-euxo", "pipefail", "-c"]
 
 # Overlay the pinned vLLM source while retaining model-family modules supplied by
-# the Gilded Gnosis base image. The fail-closed patcher adds the hybrid
-# checkpoint hooks and corrects the padded B12X DCP projection contract.
+# the Gilded Gnosis base image. The fused-query patch is the reviewed PR #174
+# series; the fail-closed patcher then adds the hybrid checkpoint hooks and
+# corrects the padded B12X DCP projection contract.
+COPY patches/vllm-fused-query.patch /opt/glm52-tr3/vllm-fused-query.patch
 RUN git clone --filter=blob:none --no-checkout "${VLLM_REPO}" /opt/public-build/vllm \
     && git -C /opt/public-build/vllm fetch --depth=1 origin "${VLLM_COMMIT}" \
     && git -C /opt/public-build/vllm checkout --detach "${VLLM_COMMIT}" \
+    && git -C /opt/public-build/vllm apply --check /opt/glm52-tr3/vllm-fused-query.patch \
+    && git -C /opt/public-build/vllm apply /opt/glm52-tr3/vllm-fused-query.patch \
     && cp -a /opt/public-build/vllm/vllm/. "${SITE}/vllm/" \
     && rm -rf /opt/public-build/vllm
 
@@ -32,14 +39,18 @@ COPY runtime/patch-vllm-hybrid.py /opt/glm52-tr3/patch-vllm-hybrid.py
 COPY runtime/nvfp4_tr3_hybrid.py ${SITE}/vllm/model_executor/layers/quantization/nvfp4_tr3_hybrid.py
 RUN /opt/venv/bin/python /opt/glm52-tr3/patch-vllm-hybrid.py "${SITE}/vllm"
 
-# Apply the reviewed EXL3/Trellis API series and the persistent mixed
-# NVFP4/Trellis kernel to SparkInfer's published v20 base revision.
+# Apply the reviewed EXL3/Trellis API series, persistent mixed NVFP4/Trellis
+# kernel, and SparkInfer PR #75 fused MLA query projection to the published v20
+# base revision. vLLM prewarms this SM120 H=8, M=1..32 decode path at startup.
 COPY patches/sparkinfer-final.patch /opt/glm52-tr3/sparkinfer-final.patch
+COPY patches/sparkinfer-fused-query.patch /opt/glm52-tr3/sparkinfer-fused-query.patch
 RUN git clone --filter=blob:none --no-checkout "${SPARKINFER_REPO}" /opt/public-build/sparkinfer \
     && git -C /opt/public-build/sparkinfer fetch --depth=1 origin "${SPARKINFER_COMMIT}" \
     && git -C /opt/public-build/sparkinfer checkout --detach "${SPARKINFER_COMMIT}" \
     && git -C /opt/public-build/sparkinfer apply --check /opt/glm52-tr3/sparkinfer-final.patch \
     && git -C /opt/public-build/sparkinfer apply /opt/glm52-tr3/sparkinfer-final.patch \
+    && git -C /opt/public-build/sparkinfer apply --check /opt/glm52-tr3/sparkinfer-fused-query.patch \
+    && git -C /opt/public-build/sparkinfer apply /opt/glm52-tr3/sparkinfer-fused-query.patch \
     && /opt/venv/bin/pip install --no-cache-dir \
          'nvidia-cutlass-dsl[cu13]==4.6.0' 'quack-kernels==0.6.1' \
     && /opt/venv/bin/pip install --no-cache-dir --no-deps --no-build-isolation \
@@ -80,6 +91,9 @@ RUN chmod 0755 /opt/glm52-tr3/serve-final.sh /opt/glm52-tr3/patch-v19-fused-tr3.
          /opt/glm52-tr3/patch-v19-fused-tr3.py \
          "${SITE}/vllm/model_executor/layers/quantization/nvfp4_tr3_hybrid.py" \
          "${SITE}/sparkinfer/moe/_shared/kernels/w4a16/trellis_hybrid.py" \
+         "${SITE}/vllm/model_executor/kernels/attention/b12x_mxfp8_bmm.py" \
+         "${SITE}/sparkinfer/gemm/_shared/mxfp8_bmm.py" \
+         "${SITE}/sparkinfer/gemm/mla_query_projection/api.py" \
          "${SITE}/b12x/moe/fused/tr3.py" \
          "${SITE}/b12x/moe/fused/w4a16/kernel.py" \
     && /opt/venv/bin/python -c \

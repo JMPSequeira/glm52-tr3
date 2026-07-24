@@ -2,7 +2,7 @@
 
 ## Scope
 
-This document compares `glm52-tr3:runtime-v2` with both relevant meanings of v20:
+This document compares `glm52-tr3:runtime-v3` with both relevant meanings of v20:
 
 1. Canonical Gilded Gnosis v20:
    `voipmonitor/vllm:gilded-gnosis-v20-vllm3e731bc-si1a88b38-fi801d57a-cu132-20260722`
@@ -29,9 +29,10 @@ The material divergences are:
 1. mixed NVFP4/TR3 checkpoint support;
 2. persistent mixed-MoE kernels;
 3. planned Trellis execution and tier overlap;
-4. compressed-KV and exact-1M launch policy;
-5. dynamic concurrency-aware MTP serving;
-6. build and provenance differences inherited from the v19 base image.
+4. fused BF16 MLA query projection and assembly;
+5. compressed-KV and exact-1M launch policy;
+6. dynamic concurrency-aware MTP serving;
+7. build and provenance differences inherited from the v19 base image.
 
 ## Source-level divergence
 
@@ -39,10 +40,10 @@ The material divergences are:
 
 Comparison of the installed source trees found:
 
-- 3,938 source files identical;
+- 3,935 source files identical;
 - one added file;
-- seven modified files;
-- approximately 1,686 added and nine removed lines.
+- ten modified files;
+- approximately 2,145 added and 18 removed lines.
 
 The added file is the 1,639-line hybrid backend:
 
@@ -60,16 +61,21 @@ The integration changes are concentrated in:
 | `fused_moe/routed_experts.py` | Adds checkpoint-native serialized expert loading |
 | `models/deepseek_v2.py` | Routes rank-sliced TR3 tensors to the hybrid expert consumer |
 | `b12x_mla_sparse.py` | Accepts padded DCP output pitches, including 2,048 rows for a 2,047-row speculative prefill |
+| `kernels/attention/b12x_mxfp8_bmm.py` | Adds SparkInfer capability checks, custom ops, and fused-query execution |
+| `layers/attention/mla_attention.py` | Dispatches qualified BF16/MXFP8 query projection through the fused path |
+| `warmup/kernel_warmup.py` | Prewarms graph-visible fused-query variants |
 | `_version.py` | Differs because of build/version provenance |
 
-The repository applies these changes through [`runtime/patch-vllm-hybrid.py`](runtime/patch-vllm-hybrid.py) and installs the backend from [`runtime/nvfp4_tr3_hybrid.py`](runtime/nvfp4_tr3_hybrid.py).
+The repository applies these changes through [`patches/vllm-fused-query.patch`](patches/vllm-fused-query.patch) and [`runtime/patch-vllm-hybrid.py`](runtime/patch-vllm-hybrid.py), then installs the hybrid backend from [`runtime/nvfp4_tr3_hybrid.py`](runtime/nvfp4_tr3_hybrid.py).
 
 ### SparkInfer versus canonical v20
 
-The retained patch changes 13 SparkInfer files:
+The retained runtime diverges across 19 SparkInfer source paths:
 
-- 4,749 additions;
-- 123 deletions.
+- eight paths exist only in this runtime;
+- one canonical path is relocated;
+- ten paths are modified;
+- the raw tree diff is 7,769 additions and 1,597 deletions, inflated by the 1,475-line MXFP8 module relocation.
 
 The significant additions are:
 
@@ -78,25 +84,31 @@ The significant additions are:
 - expanded W4A16 support;
 - a persistent mixed NVFP4/Trellis kernel;
 - route-packing changes;
+- fused BF16 MLA query projection and direct query assembly;
 - separate Trellis decode and prefill plans.
 
 The final runtime adds these modules beyond canonical v20:
 
 ```text
+sparkinfer/gemm/_shared/mxfp8_bmm.py
+sparkinfer/gemm/mla_query_projection/__init__.py
+sparkinfer/gemm/mla_query_projection/_bf16.py
+sparkinfer/gemm/mla_query_projection/api.py
 sparkinfer/moe/_shared/kernels/w4a16/trellis_hybrid.py
 sparkinfer/moe/trellis_moe/__init__.py
 sparkinfer/moe/trellis_moe/api.py
 sparkinfer/moe/trellis_moe/_impl.py
 ```
 
-The complete patch is [`patches/sparkinfer-final.patch`](patches/sparkinfer-final.patch). The final mixed kernel is maintained separately in [`runtime/trellis_hybrid.py`](runtime/trellis_hybrid.py).
+The Trellis and mixed-MoE changes are in [`patches/sparkinfer-final.patch`](patches/sparkinfer-final.patch); the fused-query series is in [`patches/sparkinfer-fused-query.patch`](patches/sparkinfer-fused-query.patch). The final mixed kernel is maintained separately in [`runtime/trellis_hybrid.py`](runtime/trellis_hybrid.py).
 
 ### Versus VerdictAI full-EXL3 v20
 
-Verdict v20 already includes the planned Trellis API. The remaining installed SparkInfer divergence is therefore smaller:
+Verdict v20 already includes the planned Trellis API. The installed SparkInfer comparison now finds:
 
-- 163 source files identical;
+- 159 source files identical;
 - our 882-line `trellis_hybrid.py` is additional;
+- four fused-query modules are additional and the canonical MXFP8 BMM module is relocated under `gemm/_shared`;
 - `w4a16/kernel.py` differs by 19 additions and three deletions;
 - our compiler-cache implementation is 28 additions and 64 deletions behind Verdict's device-architecture-aware cache format.
 
@@ -223,6 +235,16 @@ The gain came from:
 - one top-k reduction;
 - avoiding separate rounded tier outputs.
 
+### Fused MLA query result
+
+Runs 175 and 177 repeated the fused BF16 query path against matched control run 176. The average candidate decode geometric mean improved by **1.200%**:
+
+```text
+45.7798 -> 46.3293 tok/s
+```
+
+Per-context gains were **1.190% / 1.213% / 1.248% / 1.151%** at 0/16k/32k/64k. The two candidate runs differed by at most 0.193%. Averaged prefill geometric mean moved by 0.072%, so the change is decode-only.
+
 ### Current adaptive result
 
 The final dynamic recipe measured:
@@ -276,7 +298,7 @@ Our image is approximately 328 MB larger than canonical v20, primarily because o
 
 The runtime is best described as:
 
-> v20 core source plus a workload-specific mixed NVFP4/TR3 backend, persistent mixed kernels, exact-1M capacity configuration, and dynamic concurrency-aware MTP serving.
+> v20 core source plus a workload-specific mixed NVFP4/TR3 backend, persistent mixed kernels, fused MLA query assembly, exact-1M capacity configuration, and dynamic concurrency-aware MTP serving.
 
 It does not significantly diverge from v20 in general vLLM or CUDA infrastructure. It diverges at the checkpoint loader, routed-MoE execution, KV policy, and serving recipe: the areas responsible for compatibility and performance on this hybrid checkpoint.
 
